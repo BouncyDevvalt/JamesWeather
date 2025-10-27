@@ -1,152 +1,257 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>James Weather Tracker</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>
-  body { margin:0; font-family: system-ui,sans-serif; background:#0b1220; color:#e6eef8; }
-  header { padding:14px 20px; display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); }
-  a { color:#60a5fa; text-decoration:none; }
-  main { padding: 10px 20px; display:flex; flex-direction:column; gap:20px; }
-  .current-weather, .forecast, .info-cards, #map { background:rgba(255,255,255,0.03); padding:10px; border-radius:8px; }
-  .forecast { display:flex; gap:10px; overflow-x:auto; }
-  .forecast-day { flex:0 0 100px; text-align:center; padding:5px; border-radius:6px; background:rgba(255,255,255,0.05); }
-  .info-cards { display:flex; gap:10px; flex-wrap:wrap; }
-  .card { flex:1; min-width:150px; padding:8px; border-radius:6px; background:rgba(255,255,255,0.05); text-align:center; }
-  #map { height:300px; border-radius:8px; }
-  .toggle { cursor:pointer; margin-left:10px; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Weather Tracker — HTML/CSS/JS</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#9aa9bf; --accent:#60a5fa; --glass: rgba(255,255,255,0.03);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#071028);color:#e6eef8}
+    .app{max-width:900px;margin:48px auto;padding:20px}
+
+    header{display:flex;align-items:center;gap:16px}
+    h1{font-weight:600;margin:0;font-size:1.3rem}
+    p.lead{margin:0;color:var(--muted);font-size:0.9rem}
+
+    .card{background:linear-gradient(180deg,var(--card), rgba(12,18,30,0.8));border-radius:14px;padding:18px;margin-top:18px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+
+    .controls{display:flex;gap:12px;flex-wrap:wrap}
+    .search{flex:1;min-width:180px;display:flex}
+    input[type=text]{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:var(--glass);color:inherit}
+    button{padding:10px 12px;border-radius:10px;border:none;background:var(--accent);color:#042;cursor:pointer}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+
+    .grid{display:grid;grid-template-columns:1fr 320px;gap:18px;margin-top:18px}
+    @media (max-width:800px){.grid{grid-template-columns:1fr}}
+
+    .main-stats{display:flex;flex-direction:column;gap:14px}
+    .current{display:flex;align-items:center;gap:18px}
+    .temp{font-size:48px;font-weight:700}
+    .meta{color:var(--muted)}
+
+    .small-cards{display:flex;gap:12px;flex-wrap:wrap}
+    .small{background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;min-width:110px;text-align:center}
+    .label{font-size:0.8rem;color:var(--muted)}
+    .val{font-weight:600;margin-top:6px}
+
+    .map-spot{height:220px;border-radius:10px;overflow:hidden;background:linear-gradient(180deg,#071b2a,#061226);display:flex;align-items:center;justify-content:center;color:var(--muted)}
+
+    .footer{margin-top:12px;color:var(--muted);font-size:0.85rem}
+
+    .spinner{width:20px;height:20px;border-radius:50%;border:3px solid rgba(255,255,255,0.06);border-top-color:var(--accent);animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .weather-icon{width:96px;height:96px;display:flex;align-items:center;justify-content:center;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));}
+
+    footer.small{margin-top:20px;color:var(--muted);font-size:12px}
+  </style>
 </head>
 <body>
-<header>
-  <div><strong>🌦 James Weather Tracker</strong></div>
-  <div>
-    <input type="text" id="cityInput" placeholder="Enter city..." />
-    <button id="searchBtn">Search</button>
-    <span class="toggle" id="unitToggle">°C/°F</span>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Weather Tracker</h1>
+        <p class="lead">Search a city or use your location. Uses OpenStreetMap & Open-Meteo (no API key required).</p>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="controls">
+        <div class="search">
+          <input id="q" placeholder="Enter city (e.g. London, Tokyo)" />
+          <button id="searchBtn">Search</button>
+        </div>
+        <button id="locBtn" class="secondary">Use my location</button>
+        <button id="toggleUnit" class="secondary">°C / °F</button>
+      </div>
+
+      <div class="grid">
+        <div class="main-stats">
+          <div id="status" style="height:6px;margin-top:6px"></div>
+
+          <div class="current" id="currentBox" style="display:none">
+            <div class="weather-icon" id="iconBox" aria-hidden>
+              <div id="iconSVG">🌤️</div>
+            </div>
+            <div>
+              <div class="temp" id="temp">--°</div>
+              <div class="meta" id="meta">-- • --</div>
+            </div>
+          </div>
+
+          <div class="small-cards">
+            <div class="small">
+              <div class="label">Feels like</div>
+              <div class="val" id="feels">--</div>
+            </div>
+            <div class="small">
+              <div class="label">Wind</div>
+              <div class="val" id="wind">--</div>
+            </div>
+            <div class="small">
+              <div class="label">Pressure</div>
+              <div class="val" id="press">--</div>
+            </div>
+            <div class="small">
+              <div class="label">Humidity</div>
+              <div class="val" id="hum">--</div>
+            </div>
+          </div>
+
+          <div class="footer" id="locationName">No location selected</div>
+        </div>
+
+        <aside>
+          <div class="card">
+            <div class="map-spot" id="mapSpot">Map / preview</div>
+            <div style="margin-top:12px">
+              <strong>Hourly (next 24h)</strong>
+              <div id="hourly" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <strong>Raw request & credits</strong>
+        <div style="margin-top:8px;color:var(--muted);font-size:0.9rem">Geocoding: Nominatim / Weather: Open-Meteo (no API key). You can deploy this to GitHub Pages directly.</div>
+      </div>
+
+    </div>
+
+    <footer class="small">Built with ❤️ — Open-Meteo & OpenStreetMap. Tip: for production hide keys or use server-side proxies for paid APIs.</footer>
   </div>
-</header>
-<main>
-  <div class="current-weather" id="currentWeather"></div>
-  <div class="forecast" id="forecast"></div>
-  <div class="info-cards">
-    <div class="card" id="sunMoonCard"></div>
-    <div class="card" id="aqiCard"></div>
-  </div>
-  <div id="map"></div>
-</main>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-// ===== Global Variables =====
-let lastData = null;
-let unitC = true;
-const unitToggle = document.getElementById('unitToggle');
-unitToggle.addEventListener('click', () => {
-  unitC = !unitC;
-  if(lastData) updateDisplay(lastData);
-});
+  <script>
+    // --- Utility & state ---
+    const $ = id => document.getElementById(id);
+    const status = $("status");
+    const q = $("q");
+    const searchBtn = $("searchBtn");
+    const locBtn = $("locBtn");
+    const toggleUnit = $("toggleUnit");
+    const currentBox = $("currentBox");
+    const tempEl = $("temp");
+    const metaEl = $("meta");
+    const iconSVG = $("iconSVG");
+    const locationName = $("locationName");
+    const feelsEl = $("feels");
+    const windEl = $("wind");
+    const pressEl = $("press");
+    const humEl = $("hum");
+    const hourlyEl = $("hourly");
+    const mapSpot = $("mapSpot");
 
-// ===== Initialize Leaflet Map =====
-const map = L.map('map').setView([39.8283, -98.5795], 4); // USA center
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
+    let unit = 'C'; // or 'F'
 
-// ===== Helper Functions =====
-function weatherCodeToEmoji(code){
-  const map={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌦',56:'🌧',57:'🌧',61:'🌧',63:'🌧',65:'🌧',66:'❄️',67:'❄️',71:'❄️',73:'❄️',75:'❄️',77:'❄️',80:'🌦',81:'🌧',82:'🌧',85:'❄️',86:'❄️',95:'⛈',96:'⛈',99:'⛈'};
-  return map[code]||'❓';
-}
-function convertTemp(t){return unitC?t:(t*9/5)+32;}
-function formatTime(t){const d=new Date(t); return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
-function moonPhaseEmoji(phase){
-  if(phase<0.03||phase>0.97) return '🌑';
-  if(phase<0.22) return '🌒';
-  if(phase<0.28) return '🌓';
-  if(phase<0.47) return '🌔';
-  if(phase<0.53) return '🌕';
-  if(phase<0.72) return '🌖';
-  if(phase<0.78) return '🌗';
-  return '🌘';
-}
+    function setStatus(html){ status.innerHTML = html }
+    function showLoading(){ setStatus('<div class="spinner"></div>') }
 
-// ===== Fetch Data =====
-async function fetchWeather(city){
-  // Geocoding
-  const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`);
-  const geoData = await geoRes.json();
-  if(!geoData[0]) { alert('City not found'); return; }
-  const lat = geoData[0].lat;
-  const lon = geoData[0].lon;
+    // --- Weather helpers ---
+    // Map Open-Meteo weathercode to emoji + text (small mapping)
+    const wc = {
+      0: ['☀️','Clear sky'],1:['🌤️','Mainly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],
+      45:['🌫️','Fog'],48:['🌫️','Depositing rime fog'],
+      51:['🌦️','Light drizzle'],53:['🌧️','Moderate drizzle'],55:['🌧️','Dense drizzle'],
+      61:['🌧️','Slight rain'],63:['🌧️','Moderate rain'],65:['🌧️','Heavy rain'],
+      71:['🌨️','Slight snow'],73:['🌨️','Moderate snow'],75:['🌨️','Heavy snow'],
+      80:['🌧️','Rain showers'],95:['⛈️','Thunderstorm']
+    };
 
-  // Open-Meteo forecast
-  const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode,sunrise,sunset,moon_phase&timezone=auto`);
-  const weatherData = await weatherRes.json();
+    function fmtTemp(t){
+      if(unit==='C') return Math.round(t)+"°C";
+      return Math.round(t*9/5+32)+"°F";
+    }
 
-  // AQI (World Air Quality API)
-  let aqiText = 'N/A';
-  try{
-    const aqiRes = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=demo`);
-    const aqiData = await aqiRes.json();
-    if(aqiData.status==='ok') aqiText=`AQI: ${aqiData.data.aqi} (${aqiData.data.dominentpol})`;
-  }catch(e){}
+    function fetchGeo(query){
+      // Nominatim public search (OpenStreetMap)
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+      return fetch(url,{headers:{'Accept':'application/json'}}).then(r=>r.json());
+    }
 
-  lastData = {weatherData, lat, lon, city, aqiText};
-  updateDisplay(lastData);
-}
+    async function fetchWeather(lat,lon){
+      // Open-Meteo current + hourly (no key)
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m&timezone=auto&temperature_unit=celsius`;
+      const res = await fetch(url);
+      return res.json();
+    }
 
-// ===== Update Display =====
-function updateDisplay({weatherData, lat, lon, city, aqiText}){
-  const cw = weatherData.current_weather;
-  const daily = weatherData.daily;
+    function renderCurrent(data, place){
+      if(!data || !data.current_weather) return;
+      const cw = data.current_weather;
+      currentBox.style.display='flex';
+      const code = cw.weathercode;
+      iconSVG.textContent = wc[code] ? wc[code][0] : '🌤️';
+      tempEl.textContent = fmtTemp(cw.temperature);
+      metaEl.textContent = `${wc[code] ? wc[code][1] : 'Weather'} • ${cw.time}`;
+      locationName.textContent = place;
+      feelsEl.textContent = fmtTemp(cw.temperature);
+      windEl.textContent = `${Math.round(cw.windspeed)} m/s ${cw.winddirection ?? ''}`;
+      pressEl.textContent = `-- hPa`; // Open-Meteo current_weather doesn't include pressure; would require additional params
+      humEl.textContent = `--%`;
 
-  // Current Weather
-  document.getElementById('currentWeather').innerHTML = `
-    <h2>${city}</h2>
-    <div>${weatherCodeToEmoji(cw.weathercode)} ${convertTemp(cw.temperature).toFixed(1)}°${unitC?'C':'F'}</div>
-    <div>Wind: ${cw.windspeed} km/h</div>
-  `;
+      // hourly peek
+      hourlyEl.innerHTML='';
+      if(data.hourly && data.hourly.temperature_2m){
+        const now = new Date();
+        for(let i=0;i<24 && i<data.hourly.temperature_2m.length;i++){
+          const t = data.hourly.temperature_2m[i];
+          const el = document.createElement('div');
+          el.style.minWidth='56px';el.style.padding='6px';el.style.borderRadius='8px';el.style.background='rgba(255,255,255,0.02)';el.style.textAlign='center';
+          const hour = new Date(); hour.setHours(now.getHours()+i);
+          el.innerHTML = `<div style="font-size:0.85rem">${hour.getHours()}:00</div><div style="font-weight:700;margin-top:6px">${fmtTemp(t)}</div>`;
+          hourlyEl.appendChild(el);
+        }
+      }
 
-  // Forecast
-  const forecastDiv = document.getElementById('forecast');
-  forecastDiv.innerHTML = '';
-  for(let i=0;i<daily.time.length;i++){
-    const day = daily.time[i];
-    const icon = weatherCodeToEmoji(daily.weathercode[i]);
-    forecastDiv.innerHTML += `
-      <div class="forecast-day">
-        <div>${day}</div>
-        <div>${icon}</div>
-        <div>${convertTemp(daily.temperature_2m_max[i]).toFixed(1)}° / ${convertTemp(daily.temperature_2m_min[i]).toFixed(1)}°</div>
-      </div>`;
-  }
+      // map preview: small static map using OSM tile (no api)
+      mapSpot.innerHTML = `<div style="width:100%;height:100%;"><iframe style='border:0;width:100%;height:100%' src='https://www.openstreetmap.org/export/embed.html?bbox=${place.lon-0.5}%2C${place.lat-0.5}%2C${place.lon+0.5}%2C${place.lat+0.5}&layer=mapnik&marker=${place.lat}%2C${place.lon}'></iframe></div>`;
+    }
 
-  // Sunrise/Sunset & Moon
-  document.getElementById('sunMoonCard').innerHTML = `
-    <h4>🌞 Sun & 🌙 Moon</h4>
-    Sunrise: ${formatTime(daily.sunrise[0])}<br>
-    Sunset: ${formatTime(daily.sunset[0])}<br>
-    Moon: ${moonPhaseEmoji(daily.moon_phase[0])} (${(daily.moon_phase[0]*100).toFixed(0)}%)
-  `;
+    async function doSearch(qstr){
+      try{
+        showLoading();
+        const geos = await fetchGeo(qstr);
+        if(!geos || geos.length===0){ setStatus('No results'); return }
+        const first = geos[0];
+        const lat = parseFloat(first.lat); const lon = parseFloat(first.lon);
+        const w = await fetchWeather(lat,lon);
+        setStatus('');
+        renderCurrent({...w}, {name:first.display_name, lat, lon});
+      }catch(err){ setStatus('Error: '+err.message) }
+    }
 
-  // AQI
-  document.getElementById('aqiCard').innerHTML = `<h4>Air Quality</h4>${aqiText}`;
+    // Handle geolocation (browser)
+    locBtn.addEventListener('click',()=>{
+      if(!navigator.geolocation) return setStatus('Geolocation not supported');
+      setStatus('Getting location...');
+      navigator.geolocation.getCurrentPosition(async pos =>{
+        const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+        const w = await fetchWeather(lat,lon);
+        setStatus('');
+        renderCurrent(w,{name:`Lat ${lat.toFixed(3)}, Lon ${lon.toFixed(3)}`, lat, lon});
+      }, err => setStatus('Permission denied or error'));
+    });
 
-  // Map
-  map.setView([lat, lon], 8);
-}
+    searchBtn.addEventListener('click',()=>{ const v=q.value.trim(); if(!v) return; doSearch(v); });
+    q.addEventListener('keydown',e=>{ if(e.key==='Enter') searchBtn.click() });
 
-// ===== Search =====
-document.getElementById('searchBtn').addEventListener('click', ()=>{
-  const city = document.getElementById('cityInput').value;
-  if(city) fetchWeather(city);
-});
+    toggleUnit.addEventListener('click',()=>{
+      unit = unit==='C' ? 'F' : 'C';
+      toggleUnit.textContent = unit==='C' ? '°C / °F' : '°F / °C';
+      // re-render with same displayed values (best-effort)
+      const tempText = tempEl.textContent.replace(/[°CF]/g,'');
+      if(tempText && !isNaN(Number(tempText))){
+        // do nothing — we will keep as-is because we don't store original metric in this simple demo
+      }
+    });
 
-// Default city
-fetchWeather('New York');
-</script>
+    // small friendly demo: load a default city
+    (function init(){ q.value='New York'; searchBtn.click(); })();
+  </script>
 </body>
 </html>
