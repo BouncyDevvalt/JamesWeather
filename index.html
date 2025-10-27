@@ -48,6 +48,11 @@
     .weather-icon{width:96px;height:96px;display:flex;align-items:center;justify-content:center;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));}
 
     footer.small{margin-top:20px;color:var(--muted);font-size:12px}
+
+    /* New styles for forecast & AQI */
+    .forecast{display:flex;gap:8px;overflow-x:auto;margin-top:12px}
+    .forecast-day{min-width:72px;background:rgba(255,255,255,0.02);border-radius:8px;padding:6px;text-align:center}
+    .aqi-card{margin-top:12px;padding:12px;background:rgba(255,255,255,0.02);border-radius:10px}
   </style>
 </head>
 <body>
@@ -102,6 +107,25 @@
             </div>
           </div>
 
+          <div class="small-cards">
+            <div class="small">
+              <div class="label">Sunrise</div>
+              <div class="val" id="sunrise">--:--</div>
+            </div>
+            <div class="small">
+              <div class="label">Sunset</div>
+              <div class="val" id="sunset">--:--</div>
+            </div>
+            <div class="small">
+              <div class="label">Moon Phase</div>
+              <div class="val" id="moonphase">--</div>
+            </div>
+          </div>
+
+          <div class="forecast" id="forecast"></div>
+
+          <div class="aqi-card" id="aqiCard">AQI: --</div>
+
           <div class="footer" id="locationName">No location selected</div>
         </div>
 
@@ -115,142 +139,134 @@
           </div>
         </aside>
       </div>
-
-      <div class="card" style="margin-top:12px">
-        <strong>Raw request & credits</strong>
-        <div style="margin-top:8px;color:var(--muted);font-size:0.9rem">Geocoding: Nominatim / Weather: Open-Meteo (no API key). You can deploy this to GitHub Pages directly.</div>
-      </div>
-
     </div>
 
-    <footer class="small">Built with ❤️ — Open-Meteo & OpenStreetMap. Tip: for production hide keys or use server-side proxies for paid APIs.</footer>
+    <footer class="small">Built with ❤️ — Open-Meteo & OpenStreetMap.</footer>
   </div>
 
   <script>
-    // --- Utility & state ---
-    const $ = id => document.getElementById(id);
-    const status = $("status");
-    const q = $("q");
-    const searchBtn = $("searchBtn");
-    const locBtn = $("locBtn");
-    const toggleUnit = $("toggleUnit");
-    const currentBox = $("currentBox");
-    const tempEl = $("temp");
-    const metaEl = $("meta");
-    const iconSVG = $("iconSVG");
-    const locationName = $("locationName");
-    const feelsEl = $("feels");
-    const windEl = $("wind");
-    const pressEl = $("press");
-    const humEl = $("hum");
-    const hourlyEl = $("hourly");
-    const mapSpot = $("mapSpot");
+    const $ = id=>document.getElementById(id);
+    const status=$("status"), q=$("q"), searchBtn=$("searchBtn"), locBtn=$("locBtn"), toggleUnit=$("toggleUnit");
+    const currentBox=$("currentBox"), tempEl=$("temp"), metaEl=$("meta"), iconSVG=$("iconSVG"), locationName=$("locationName");
+    const feelsEl=$("feels"), windEl=$("wind"), pressEl=$("press"), humEl=$("hum"), hourlyEl=$("hourly"), mapSpot=$("mapSpot");
+    const forecastDiv=$("forecast"), sunriseEl=$("sunrise"), sunsetEl=$("sunset"), moonphaseEl=$("moonphase"), aqiCard=$("aqiCard");
+    let unit='C';
 
-    let unit = 'C'; // or 'F'
-
-    function setStatus(html){ status.innerHTML = html }
+    function setStatus(html){ status.innerHTML=html }
     function showLoading(){ setStatus('<div class="spinner"></div>') }
 
-    // --- Weather helpers ---
-    // Map Open-Meteo weathercode to emoji + text (small mapping)
-    const wc = {
-      0: ['☀️','Clear sky'],1:['🌤️','Mainly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],
-      45:['🌫️','Fog'],48:['🌫️','Depositing rime fog'],
-      51:['🌦️','Light drizzle'],53:['🌧️','Moderate drizzle'],55:['🌧️','Dense drizzle'],
-      61:['🌧️','Slight rain'],63:['🌧️','Moderate rain'],65:['🌧️','Heavy rain'],
-      71:['🌨️','Slight snow'],73:['🌨️','Moderate snow'],75:['🌨️','Heavy snow'],
-      80:['🌧️','Rain showers'],95:['⛈️','Thunderstorm']
-    };
+    const wc={0:['☀️','Clear'],1:['🌤️','Mainly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],45:['🌫️','Fog'],48:['🌫️','Rime fog'],51:['🌦️','Light drizzle'],53:['🌧️','Moderate drizzle'],55:['🌧️','Dense drizzle'],61:['🌧️','Rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],71:['🌨️','Snow'],73:['🌨️','Snow'],75:['🌨️','Heavy snow'],80:['🌧️','Rain showers'],95:['⛈️','Thunderstorm']};
 
-    function fmtTemp(t){
-      if(unit==='C') return Math.round(t)+"°C";
-      return Math.round(t*9/5+32)+"°F";
-    }
+    function fmtTemp(t){return unit==='C'?Math.round(t)+'°C':Math.round(t*9/5+32)+'°F'}
 
-    function fetchGeo(query){
-      // Nominatim public search (OpenStreetMap)
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+    async function fetchGeo(query){
+      const url=`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
       return fetch(url,{headers:{'Accept':'application/json'}}).then(r=>r.json());
     }
 
     async function fetchWeather(lat,lon){
-      // Open-Meteo current + hourly (no key)
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m&timezone=auto&temperature_unit=celsius`;
-      const res = await fetch(url);
+      const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min,weathercode,sunrise,sunset,moon_phase&timezone=auto`;
+      const res=await fetch(url);
       return res.json();
     }
 
-    function renderCurrent(data, place){
-      if(!data || !data.current_weather) return;
-      const cw = data.current_weather;
-      currentBox.style.display='flex';
-      const code = cw.weathercode;
-      iconSVG.textContent = wc[code] ? wc[code][0] : '🌤️';
-      tempEl.textContent = fmtTemp(cw.temperature);
-      metaEl.textContent = `${wc[code] ? wc[code][1] : 'Weather'} • ${cw.time}`;
-      locationName.textContent = place;
-      feelsEl.textContent = fmtTemp(cw.temperature);
-      windEl.textContent = `${Math.round(cw.windspeed)} m/s ${cw.winddirection ?? ''}`;
-      pressEl.textContent = `-- hPa`; // Open-Meteo current_weather doesn't include pressure; would require additional params
-      humEl.textContent = `--%`;
+    async function fetchAQI(lat,lon){
+      try{
+        const res = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=demo`);
+        const data = await res.json();
+        if(data.status==='ok') return `AQI: ${data.data.aqi} (${data.data.dominentpol})`;
+      }catch(e){}
+      return 'AQI: N/A';
+    }
 
-      // hourly peek
+    function renderCurrent(data, place){
+      if(!data||!data.current_weather) return;
+      const cw=data.current_weather;
+      currentBox.style.display='flex';
+      const code=cw.weathercode;
+      iconSVG.textContent = wc[code]?wc[code][0]:'🌤️';
+      tempEl.textContent = fmtTemp(cw.temperature);
+      metaEl.textContent = `${wc[code]?wc[code][1]:'Weather'} • ${cw.time}`;
+      locationName.textContent = place.name;
+      feelsEl.textContent = fmtTemp(cw.temperature);
+      windEl.textContent = `${Math.round(cw.windspeed)} m/s`;
+      pressEl.textContent='-- hPa';
+      humEl.textContent='--%';
+
+      // Hourly
       hourlyEl.innerHTML='';
       if(data.hourly && data.hourly.temperature_2m){
-        const now = new Date();
+        const now=new Date();
         for(let i=0;i<24 && i<data.hourly.temperature_2m.length;i++){
-          const t = data.hourly.temperature_2m[i];
-          const el = document.createElement('div');
+          const t=data.hourly.temperature_2m[i];
+          const el=document.createElement('div');
           el.style.minWidth='56px';el.style.padding='6px';el.style.borderRadius='8px';el.style.background='rgba(255,255,255,0.02)';el.style.textAlign='center';
-          const hour = new Date(); hour.setHours(now.getHours()+i);
-          el.innerHTML = `<div style="font-size:0.85rem">${hour.getHours()}:00</div><div style="font-weight:700;margin-top:6px">${fmtTemp(t)}</div>`;
+          const hour=new Date(); hour.setHours(now.getHours()+i);
+          el.innerHTML=`<div style="font-size:0.85rem">${hour.getHours()}:00</div><div style="font-weight:700;margin-top:6px">${fmtTemp(t)}</div>`;
           hourlyEl.appendChild(el);
         }
       }
 
-      // map preview: small static map using OSM tile (no api)
-      mapSpot.innerHTML = `<div style="width:100%;height:100%;"><iframe style='border:0;width:100%;height:100%' src='https://www.openstreetmap.org/export/embed.html?bbox=${place.lon-0.5}%2C${place.lat-0.5}%2C${place.lon+0.5}%2C${place.lat+0.5}&layer=mapnik&marker=${place.lat}%2C${place.lon}'></iframe></div>`;
+      // Forecast 7-day
+      forecastDiv.innerHTML='';
+      if(data.daily && data.daily.time){
+        for(let i=0;i<data.daily.time.length;i++){
+          const day=document.createElement('div');
+          day.className='forecast-day';
+          const date=new Date(data.daily.time[i]);
+          day.innerHTML=`<div style="font-size:0.8rem">${date.getDate()}/${date.getMonth()+1}</div>
+          <div>${wc[data.daily.weathercode[i]]?wc[data.daily.weathercode[i]][0]:'🌤️'}</div>
+          <div style="font-size:0.8rem">${fmtTemp(data.daily.temperature_2m_max[i])}/${fmtTemp(data.daily.temperature_2m_min[i])}</div>`;
+          forecastDiv.appendChild(day);
+        }
+
+        sunriseEl.textContent = new Date(data.daily.sunrise[0]).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        sunsetEl.textContent = new Date(data.daily.sunset[0]).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        const phase=data.daily.moon_phase[0];
+        moonphaseEl.textContent = phase<0.03||phase>0.97?'🌑':phase<0.22?'🌒':phase<0.28?'🌓':phase<0.47?'🌔':phase<0.53?'🌕':phase<0.72?'🌖':phase<0.78?'🌗':'🌘';
+      }
+
+      // AQI
+      fetchAQI(place.lat,place.lon).then(aqi=>{aqiCard.textContent=aqi});
+
+      // Map preview
+      mapSpot.innerHTML=`<div style="width:100%;height:100%;"><iframe style='border:0;width:100%;height:100%' src='https://www.openstreetmap.org/export/embed.html?bbox=${place.lon-0.5}%2C${place.lat-0.5}%2C${place.lon+0.5}%2C${place.lat+0.5}&layer=mapnik&marker=${place.lat}%2C${place.lon}'></iframe></div>`;
     }
 
     async function doSearch(qstr){
       try{
         showLoading();
         const geos = await fetchGeo(qstr);
-        if(!geos || geos.length===0){ setStatus('No results'); return }
-        const first = geos[0];
-        const lat = parseFloat(first.lat); const lon = parseFloat(first.lon);
+        if(!geos||geos.length===0){ setStatus('No results'); return; }
+        const first=geos[0];
+        const lat=parseFloat(first.lat); const lon=parseFloat(first.lon);
         const w = await fetchWeather(lat,lon);
         setStatus('');
-        renderCurrent({...w}, {name:first.display_name, lat, lon});
+        renderCurrent({...w},{name:first.display_name,lat,lon});
       }catch(err){ setStatus('Error: '+err.message) }
     }
 
-    // Handle geolocation (browser)
     locBtn.addEventListener('click',()=>{
       if(!navigator.geolocation) return setStatus('Geolocation not supported');
       setStatus('Getting location...');
-      navigator.geolocation.getCurrentPosition(async pos =>{
-        const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+      navigator.geolocation.getCurrentPosition(async pos=>{
+        const lat=pos.coords.latitude, lon=pos.coords.longitude;
         const w = await fetchWeather(lat,lon);
         setStatus('');
-        renderCurrent(w,{name:`Lat ${lat.toFixed(3)}, Lon ${lon.toFixed(3)}`, lat, lon});
-      }, err => setStatus('Permission denied or error'));
+        renderCurrent(w,{name:`Lat ${lat.toFixed(3)}, Lon ${lon.toFixed(3)}`,lat,lon});
+      },err=>setStatus('Permission denied or error'));
     });
 
-    searchBtn.addEventListener('click',()=>{ const v=q.value.trim(); if(!v) return; doSearch(v); });
-    q.addEventListener('keydown',e=>{ if(e.key==='Enter') searchBtn.click() });
+    searchBtn.addEventListener('click',()=>{ const v=q.value.trim(); if(v) doSearch(v); });
+    q.addEventListener('keydown',e=>{ if(e.key==='Enter') searchBtn.click(); });
 
     toggleUnit.addEventListener('click',()=>{
-      unit = unit==='C' ? 'F' : 'C';
-      toggleUnit.textContent = unit==='C' ? '°C / °F' : '°F / °C';
-      // re-render with same displayed values (best-effort)
-      const tempText = tempEl.textContent.replace(/[°CF]/g,'');
-      if(tempText && !isNaN(Number(tempText))){
-        // do nothing — we will keep as-is because we don't store original metric in this simple demo
-      }
+      unit=unit==='C'?'F':'C';
+      toggleUnit.textContent = unit==='C'?'°C / °F':'°F / °C';
+      // re-render last displayed values? for simplicity, skip
     });
 
-    // small friendly demo: load a default city
+    // init default city
     (function init(){ q.value='New York'; searchBtn.click(); })();
   </script>
 </body>
